@@ -35,7 +35,9 @@
 #include "utils.h"
 #include "btrfs-list.h"
 #include "utils.h"
-
+#include "subvolume.h"
+#include "snapshot-scan.h"
+char subvol_details_buffer[1024];
 static const char * const subvolume_cmd_group_usage[] = {
 	"btrfs subvolume <command> <args>",
 	NULL
@@ -71,7 +73,7 @@ static const char * const cmd_subvol_create_usage[] = {
 	NULL
 };
 
-static int cmd_subvol_create(int argc, char **argv)
+int cmd_subvol_create(int argc, char **argv)
 {
 	int	retval, res, len;
 	int	fddst = -1;
@@ -84,6 +86,10 @@ static int cmd_subvol_create(int argc, char **argv)
 	DIR	*dirstream = NULL;
 
 	optind = 1;
+
+	/*********************************/
+	char *tips;
+	/*              error logi      */
 	while (1) {
 		int c = getopt(argc, argv, "c:i:");
 		if (c < 0)
@@ -117,7 +123,11 @@ static int cmd_subvol_create(int argc, char **argv)
 	retval = 1;	/* failure */
 	res = test_isdir(dst);
 	if (res >= 0) {
+		tips = malloc(sizeof(char)*100);
 		fprintf(stderr, "ERROR: '%s' exists\n", dst);
+		sprintf(tips,"<span font_desc='12'>ERROR:'%s' exists</span>",dst);
+		gtk_label_set_markup(GTK_LABEL(label_output),tips);
+		free(tips);
 		goto out;
 	}
 
@@ -130,6 +140,10 @@ static int cmd_subvol_create(int argc, char **argv)
 	     strchr(newname, '/') ){
 		fprintf(stderr, "ERROR: uncorrect subvolume name ('%s')\n",
 			newname);
+		tips = malloc(sizeof(char)*100);
+		sprintf(tips,"<span font_desc='12'>ERROR: uncorect subvolume name('%s')</span>",newname);
+		gtk_label_set_markup(GTK_LABEL(label_output),tips);
+		free(tips);
 		goto out;
 	}
 
@@ -137,16 +151,29 @@ static int cmd_subvol_create(int argc, char **argv)
 	if (len == 0 || len >= BTRFS_VOL_NAME_MAX) {
 		fprintf(stderr, "ERROR: subvolume name too long ('%s)\n",
 			newname);
+		tips = malloc(sizeof(char)*100);
+		sprintf(tips, "<span font_desc='12'>ERROR: subvolume name too long ('%s)</span>",
+			newname);
+		gtk_label_set_markup(GTK_LABEL(label_output),tips);
+		free(tips);
 		goto out;
 	}
 
 	fddst = open_file_or_dir(dstdir, &dirstream);
 	if (fddst < 0) {
 		fprintf(stderr, "ERROR: can't access to '%s'\n", dstdir);
+		tips = malloc(sizeof(char)*100);
+		sprintf(tips, "<span font_desc='12'>ERROR: can't access to''%s</span>",dstdir);
+		gtk_label_set_markup(GTK_LABEL(label_output),tips);
+		free(tips);
 		goto out;
 	}
 
 	printf("Create subvolume '%s/%s'\n", dstdir, newname);
+	tips = malloc(sizeof(char)*100);
+	sprintf(tips,"<span font_desc='12'>Create subvolume '%s/%s'</span>", dstdir, newname);
+	gtk_label_set_markup(GTK_LABEL(label_output),tips);
+	free(tips);
 	if (inherit) {
 		struct btrfs_ioctl_vol_args_v2	args;
 
@@ -207,7 +234,8 @@ static const char * const cmd_subvol_delete_usage[] = {
 	NULL
 };
 
-static int cmd_subvol_delete(int argc, char **argv)
+//static
+int cmd_subvol_delete(int argc, char **argv)
 {
 	int	res, fd, len, e, cnt = 1, ret = 0;
 	struct btrfs_ioctl_vol_args	args;
@@ -216,13 +244,12 @@ static int cmd_subvol_delete(int argc, char **argv)
 	char	*dupvname = NULL;
 	char	*path;
 	DIR	*dirstream = NULL;
-
+	/*存放错误信息*/
 	if (argc < 2)
 		usage(cmd_subvol_delete_usage);
 
 again:
 	path = argv[cnt];
-
 	res = test_issubvolume(path);
 	if (res < 0) {
 		fprintf(stderr, "ERROR: error accessing '%s'\n", path);
@@ -281,6 +308,7 @@ again:
 	if(res < 0 ){
 		fprintf( stderr, "ERROR: cannot delete '%s/%s' - %s\n",
 			dname, vname, strerror(e));
+		
 		ret = 1;
 		goto out;
 	}
@@ -293,7 +321,6 @@ out:
 	cnt++;
 	if (cnt < argc)
 		goto again;
-
 	return ret;
 }
 
@@ -332,8 +359,29 @@ static const char * const cmd_subvol_list_usage[] = {
 	"             (+:ascending, -:descending, ascending default)",
 	NULL,
 };
-
-static int cmd_subvol_list(int argc, char **argv)
+/*gui列出当前文件系统下的子卷接口*/
+/*int  gui_subvol_list(){
+	int i;
+	n = rb_first(&sorted_tree->root);
+	while (n) {
+		printf("next snapshot path");
+		entry = rb_entry(n, struct root_info, sort_node);
+		switch (layout) {
+		case BTRFS_LIST_LAYOUT_DEFAULT:
+			printf("id is %s \n",entry->root_id);
+			break;
+		case BTRFS_LIST_LAYOUT_TABLE:
+			print_single_volume_info_table(entry);
+			break;
+		case BTRFS_LIST_LAYOUT_RAW:
+			print_single_volume_info_raw(entry, raw_prefix);
+			break;
+		}
+		n = rb_next(n);
+	}	
+}*/
+//static 
+int cmd_subvol_list(int argc, char **argv)
 {
 	struct btrfs_list_filter_set *filter_set;
 	struct btrfs_list_comparer_set *comparer_set;
@@ -354,11 +402,13 @@ static int cmd_subvol_list(int argc, char **argv)
 
 	filter_set = btrfs_list_alloc_filter_set();
 	comparer_set = btrfs_list_alloc_comparer_set();
-
+	printf("args1 = %s,args2 = %s\n",argv[0],argv[1]);
 	optind = 1;
+
 	while(1) {
 		c = getopt_long(argc, argv,
 				    "acdgopqsurG:C:t", long_options, NULL);
+		printf("now c is %d\n",c);
 		if (c < 0)
 			break;
 
@@ -367,6 +417,7 @@ static int cmd_subvol_list(int argc, char **argv)
 			btrfs_list_setup_print_column(BTRFS_LIST_PARENT);
 			break;
 		case 'a':
+			printf("print all");
 			is_list_all = 1;
 			break;
 		case 'c':
@@ -387,6 +438,7 @@ static int cmd_subvol_list(int argc, char **argv)
 			is_tab_result = 1;
 			break;
 		case 's':
+
 			btrfs_list_setup_filter(&filter_set,
 						BTRFS_LIST_FILTER_SNAPSHOT_ONLY,
 						0);
@@ -441,7 +493,8 @@ static int cmd_subvol_list(int argc, char **argv)
 	if (flags)
 		btrfs_list_setup_filter(&filter_set, BTRFS_LIST_FILTER_FLAGS,
 					flags);
-
+	
+	printf("------------------return=%d,return1=%d\n",check_argc_exact(1,1),check_argc_exact(2,1));
 	if (check_argc_exact(argc - optind, 1)) {
 		uerr = 1;
 		goto out;
@@ -510,7 +563,8 @@ static const char * const cmd_snapshot_usage[] = {
 	NULL
 };
 
-static int cmd_snapshot(int argc, char **argv)
+//static
+int cmd_snapshot(int argc, char **argv)
 {
 	char	*subvol, *dst;
 	int	res, retval;
@@ -524,6 +578,9 @@ static int cmd_snapshot(int argc, char **argv)
 	struct btrfs_qgroup_inherit *inherit = NULL;
 	DIR *dirstream1 = NULL, *dirstream2 = NULL;
 
+	/*存放错误信息*/
+	char path_str[100];
+printf("cmd snpashot------\n");	
 	optind = 1;
 	memset(&args, 0, sizeof(args));
 	while (1) {
@@ -548,6 +605,7 @@ static int cmd_snapshot(int argc, char **argv)
 			break;
 		case 'r':
 			readonly = 1;
+			printf("read only \n");
 			break;
 		case 'x':
 			res = qgroup_inherit_add_copy(&inherit, optarg, 1);
@@ -569,18 +627,24 @@ static int cmd_snapshot(int argc, char **argv)
 
 	retval = 1;	/* failure */
 	res = test_issubvolume(subvol);
+	//a = 10;
 	if (res < 0) {
 		fprintf(stderr, "ERROR: error accessing '%s'\n", subvol);
+		sprintf(path_str,"<span font_desc='12'>ERROR: error acceing %s\n</span>",subvol);
 		goto out;
 	}
 	if (!res) {
 		fprintf(stderr, "ERROR: '%s' is not a subvolume\n", subvol);
+		sprintf(path_str,"<span font_desc='12'>ERROR: '%s' is not a subvolume \n</span>",subvol);
+		//gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
 	res = test_isdir(dst);
 	if (res == 0) {
 		fprintf(stderr, "ERROR: '%s' exists and it is not a directory\n", dst);
+		sprintf(path_str,"<span font_desc='12'>ERROR: '%s'exists and it is not a directory\n</span>",subvol);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
@@ -599,6 +663,8 @@ static int cmd_snapshot(int argc, char **argv)
 	     strchr(newname, '/') ){
 		fprintf(stderr, "ERROR: incorrect snapshot name ('%s')\n",
 			newname);
+		sprintf(path_str,"<span font_desc='12'>ERROR:incorrect snapshot name (%s)</span>",subvol);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
@@ -606,18 +672,24 @@ static int cmd_snapshot(int argc, char **argv)
 	if (len == 0 || len >= BTRFS_VOL_NAME_MAX) {
 		fprintf(stderr, "ERROR: snapshot name too long ('%s)\n",
 			newname);
+		sprintf(path_str,"ERROR: snapshot name too long (%s)\n",subvol);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
 	fddst = open_file_or_dir(dstdir, &dirstream1);
 	if (fddst < 0) {
 		fprintf(stderr, "ERROR: can't access to '%s'\n", dstdir);
+		sprintf(path_str,"<span font_desc='12'>ERROR:can't access to %s\n'</span>",dstdir);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
 	fd = open_file_or_dir(subvol, &dirstream2);
 	if (fd < 0) {
 		fprintf(stderr, "ERROR: can't access to '%s'\n", dstdir);
+		sprintf(path_str,"<span font_desc='12'>ERROR:can't access to %s'</span>",dstdir);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
@@ -625,9 +697,13 @@ static int cmd_snapshot(int argc, char **argv)
 		args.flags |= BTRFS_SUBVOL_RDONLY;
 		printf("Create a readonly snapshot of '%s' in '%s/%s'\n",
 		       subvol, dstdir, newname);
+		sprintf(path_str,"<span font_desc='12'>Create a readonly snapshot of '%s' in '%s/%s</span>",subvol, dstdir, newname);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 	} else {
 		printf("Create a snapshot of '%s' in '%s/%s'\n",
 		       subvol, dstdir, newname);
+		sprintf(path_str,"<span font_desc='12'>Create a  snapshot of '%s' in '%s/%s</span>",subvol, dstdir, newname);
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 	}
 
 	args.fd = fd;
@@ -643,6 +719,8 @@ static int cmd_snapshot(int argc, char **argv)
 	if (res < 0) {
 		fprintf( stderr, "ERROR: cannot snapshot '%s' - %s\n",
 			subvol, strerror(errno));
+		sprintf(path_str,"<span font_desc='12'>ERROR: can not snapshot %s - %s</span>",subvol,strerror(errno));
+	//	gtk_label_set_markup(GTK_LABEL(label_snap_create_caution),path_str);
 		goto out;
 	}
 
@@ -657,6 +735,7 @@ out:
 
 	return retval;
 }
+
 
 static const char * const cmd_subvol_get_default_usage[] = {
 	"btrfs subvolume get-default <path>",
@@ -772,7 +851,9 @@ static const char * const cmd_find_new_usage[] = {
 	NULL
 };
 
-static int cmd_find_new(int argc, char **argv)
+//static
+//寻找目的子卷中最近改变的文件
+int cmd_find_new(int argc, char **argv)
 {
 	int fd;
 	int ret;
@@ -821,7 +902,8 @@ static const char * const cmd_subvol_show_usage[] = {
 	NULL
 };
 
-static int cmd_subvol_show(int argc, char **argv)
+//static 
+int cmd_subvol_show(int argc, char **argv)
 {
 	struct root_info get_ri;
 	struct btrfs_list_filter_set *filter_set;
@@ -833,6 +915,12 @@ static int cmd_subvol_show(int argc, char **argv)
 	int fd = -1, mntfd = -1;
 	int ret = 1;
 	DIR *dirstream1 = NULL, *dirstream2 = NULL;
+	static char root_id_str[5];
+	static char gen_str[10];
+	static char ogen_str[10];
+	static char ref_tree_str[10];
+	static char top_id_str[10];
+	static char *uuid_str = NULL;
 
 	if (check_argc_exact(argc, 2))
 		usage(cmd_subvol_show_usage);
@@ -906,12 +994,15 @@ static int cmd_subvol_show(int argc, char **argv)
 	/* print the info */
 	printf("%s\n", fullpath);
 	printf("\tName: \t\t\t%s\n", get_ri.name);
-
+	
 	if (uuid_is_null(get_ri.uuid))
 		strcpy(uuidparse, "-");
 	else
 		uuid_unparse(get_ri.uuid, uuidparse);
 	printf("\tuuid: \t\t\t%s\n", uuidparse);
+
+	uuid_str = malloc(strlen(uuidparse)+1);//保存当期的uuid数值
+	strcpy(uuid_str,uuidparse);
 
 	if (uuid_is_null(get_ri.puuid))
 		strcpy(uuidparse, "-");
@@ -933,14 +1024,35 @@ static int cmd_subvol_show(int argc, char **argv)
 	printf("\tGen at creation: \t%llu\n", get_ri.ogen);
 	printf("\tParent: \t\t%llu\n", get_ri.ref_tree);
 	printf("\tTop Level: \t\t%llu\n", get_ri.top_id);
-
-	if (get_ri.flags & BTRFS_ROOT_SUBVOL_RDONLY)
+	/*
+	*获得subvol_info_buffer，用于填充textview_subvol_info
+	*/	
+	/*subvol_info_buffer = (char*)malloc(sizeof(char)*
+	(sizeof(get_ri.name)+
+	sizeof(uuidparse)+
+	sizeof(tstr)+
+	sizeof(get_ri.root_id)+
+	sizeof(get_ri.gen)
+	));*/
+	sprintf(subvol_details_buffer,"Name: %s\tuuid: \t%s\tCreation time: %s\tObject ID: %llu\tGeneration (Gen): %llu\nGen at creation: %llu\tParent: %llu\tTop Level: %llu",get_ri.name,uuidparse,tstr,get_ri.root_id,get_ri.gen,get_ri.ogen,get_ri.ref_tree,get_ri.top_id);
+	sprintf(root_id_str,"%llu",get_ri.root_id);
+	sprintf(gen_str,"%llu",get_ri.gen);
+	sprintf(ogen_str,"%llu",get_ri.ogen);
+	sprintf(ref_tree_str,"%llu",get_ri.ref_tree);
+	sprintf(top_id_str,"%llu",get_ri.top_id);
+	free(uuid_str);
+	
+	if (get_ri.flags & BTRFS_ROOT_SUBVOL_RDONLY){
 		printf("\tFlags: \t\t\treadonly\n");
-	else
+	}
+	else{
 		printf("\tFlags: \t\t\t-\n");
+	}
 
 	/* print the snapshots of the given subvol if any*/
 	printf("\tSnapshot(s):\n");
+	
+	
 	filter_set = btrfs_list_alloc_filter_set();
 	btrfs_list_setup_filter(&filter_set, BTRFS_LIST_FILTER_BY_PARENT,
 				(u64)(unsigned long)get_ri.uuid);

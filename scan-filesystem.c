@@ -14,8 +14,9 @@ void scan_filesystem(GtkMenuItem *item,gpointer data){
 	gtk_text_view_set_editable((GtkTextView *)screen_view,FALSE);
 	gtk_text_view_set_cursor_visible((GtkTextView *)screen_view,FALSE);
 	gtk_container_add(GTK_CONTAINER(scwin),screen_view);
-	buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(screen_view));	
-	cmd_show(0,NULL);
+	buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(screen_view));	;
+	//cmd_show(0,NULL);
+	g_print("hello");
 	gtk_widget_show(scwin);
 	gtk_widget_show(screen_view);
 }

@@ -1,6 +1,7 @@
 #include "filesystem.h"
 #include "subvolume.h"
-
+extern int snap_flag;
+//#include "snapshot-scan.h"
 GtkWidget *window_main;//主窗口
 GtkWidget *box,*itemlist_box,*contents_box;//主容器，左边的列表容器，右边的显示区域容器
 GtkWidget *menubar;//菜单条
@@ -9,12 +10,20 @@ GtkItemFactory *item_factory;//菜单项
 GtkWidget *separator;//分割线
 GtkWidget *label_title1,*label_title2;//两个标题栏
 GtkWidget *panel;//分割面板
-GtkWidget *view;//容纳列表的视图容器
+GtkWidget *view,*view1;//容纳列表的视图容器
 GtkWidget *list;//列表
 GtkWidget *list_item;//列表项
+GtkWidget *scsub;//左侧滚动条
 
+extern void subvolume_delete(GtkMenuItem *window,gpointer data);
+extern void subvol_default_scan(GtkMenuItem *window,gpointer data);
+extern void subvol_readonly_scan (GtkMenuItem *window,gpointer data);
+extern void  subvolume_create(GtkMenuItem *window,gpointer data);
+extern void  subvol_file_scan(GtkMenuItem *window,gpointer data);
+extern void  snapshot_create(GtkMenuItem *window,gpointer data);
+GdkColor color;
 void destroy(GtkWidget *window,gpointer data);
-
+//void scan_subvol(GtkMenuItem *window,gpointer data);
 /*static void debug(GtkWidget *window,gpointer window_main){
 	GtkWidget *dialog;
 	dialog=gtk_message_dialog_new(window_main,
@@ -27,7 +36,6 @@ void destroy(GtkWidget *window,gpointer data);
 	gtk_widget_destroy(dialog);
 }*/
 
-
 GtkItemFactoryEntry menu_items[] = {
 	{ "/_Filesystem",         NULL,         NULL, 0, "<Branch>" },
 	{ "/Filesystem/_Create Btrfs",     "<control>N", NULL, 0, "<StockItem>",GTK_STOCK_NEW},
@@ -37,13 +45,16 @@ GtkItemFactoryEntry menu_items[] = {
 	{ "/Filesystem/sep1",     NULL,         NULL, 0, "<Separator>" },
 	{ "/Filesystem/_Exit",     "<control>Q", destroy, 0, "<StockItem>",GTK_STOCK_QUIT },
 	{ "/_Subvolume",      NULL,         NULL, 0, "<Branch>" },
-	{ "/Subvolume/Scan Subvolume",  NULL,         NULL, 0, NULL }, 
-	{ "/Subvolume/Create",  NULL,         NULL, 0, NULL },
+	{ "/Subvolume/_Scan Subvolume",  NULL,         NULL, 0, "<Branch>" },
+	{ "/Subvolume/Scan Subvolume/default",	NULL, NULL ,	0,"<StockItem>",GTK_STOCK_FIND},	
+	{ "/Subvolume/Scan Subvolume/readonly",	NULL, NULL ,0, "<StockItem>" ,GTK_STOCK_FIND},
+	{ "/Subvolume/Modifiled files",	NULL,	NULL ,	0,	NULL},
+	{ "/Subvolume/Create",  NULL,         subvolume_create, 0 , NULL },
 	{ "/Subvolume/Delete",  NULL,         NULL, 0, NULL },
 	{ "/_Snapshot",      NULL,         NULL, 0, "<Branch>" },
-	{ "/Snapshot/Scan Snapshot",      NULL,         NULL, 0, NULL },
+	{ "/Snapshot/Scan Snapshot",      NULL,     NULL, 0, NULL },
 	{ "/Snapshot/Manage Snapshot",      NULL,         NULL, 0, NULL },
-	{ "/Snapshot/Create",      NULL,         NULL, 0, NULL },
+	{ "/Snapshot/Create",      NULL,         snapshot_create, 0, NULL },
 	{ "/Snapshot/Delete",      NULL,         NULL, 0, NULL },
 	{ "/_Help",         NULL,         NULL, 0, "<Branch>" },
 	{ "/_Help/About",   NULL,         NULL, 0, NULL },
@@ -51,22 +62,24 @@ GtkItemFactoryEntry menu_items[] = {
 
 gint nmenu_items = sizeof (menu_items) / sizeof (menu_items[0]);
 
-
 void destroy(GtkWidget *window,gpointer data){
 		gtk_main_quit();
 }
 
 
-int main( int argc, char *argv[]){	
+int main(int argc, char *argv[]){	
 	gtk_init(&argc, &argv);//主窗口初始化
+	//snap_flag = 0;
 	window_main = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(window_main),"btrfs_gui_utilities");
-	gtk_window_set_default_size(GTK_WINDOW(window_main),1000,500);
+	gtk_window_set_default_size(GTK_WINDOW(window_main),800,500);
 	gtk_window_set_position(GTK_WINDOW(window_main),GTK_WIN_POS_CENTER);
 	gtk_container_set_border_width(GTK_CONTAINER(window_main),10);	
 	g_signal_connect(G_OBJECT(window_main),"destroy",G_CALLBACK(destroy),NULL);	
 		
-	box = gtk_vbox_new(FALSE,5);//创建纵向box容器
+	gdk_color_parse("white",&color);//初始化颜色
+	
+	box = gtk_vbox_new(FALSE,2);//创建纵向box容器
 	gtk_container_add(GTK_CONTAINER(window_main),box);
 	gtk_widget_show(box);
 	
@@ -77,7 +90,6 @@ int main( int argc, char *argv[]){
 	gtk_window_add_accel_group(GTK_WINDOW(window_main),accel_group);
 	menubar = gtk_item_factory_get_widget (item_factory,"<main>");
 	gtk_box_pack_start(GTK_BOX(box),menubar,FALSE,FALSE,0);
-
 
 	separator=gtk_hseparator_new();//创建分割线
 	gtk_box_pack_start(GTK_BOX(box),separator,FALSE,FALSE,0);

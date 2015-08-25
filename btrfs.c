@@ -160,7 +160,6 @@ int check_argc_exact(int nargs, int expected)
 		fprintf(stderr, "%s: too few arguments\n", argv0_buf);
 	if (nargs > expected)
 		fprintf(stderr, "%s: too many arguments\n", argv0_buf);
-
 	return nargs != expected;
 }
 

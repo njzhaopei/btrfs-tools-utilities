@@ -1,0 +1,373 @@
+#include "filesystem.h"
+#include "subvolume.h"
+
+GtkWidget *window_main;//主窗口
+GtkWidget *box,*itemlist_box,*contents_box;//主容器，左边的列表容器，右边的显示区域容器
+GtkWidget *menubar;//菜单条
+GtkAccelGroup *accel_group;//快捷键集
+GtkItemFactory *item_factory;//菜单项
+GtkWidget *separator;//分割线
+GtkWidget *label_title1,*label_title2;//两个标题栏
+GtkWidget *panel;//分割面板
+GtkWidget *view,*view1;//容纳列表的视图容器
+GtkWidget *list;//列表
+GtkWidget *list_new[127][127];//左侧列表的标签
+GtkWidget *list_new1[12],*list_subvol_info[12];//右侧列表的标签
+GtkWidget *list_item;//列表项
+GtkWidget *button[127],*button1;
+GtkWidget *table,*table1;
+GtkWidget *scsub;//左侧滚动条
+/********************************/
+/*    create subvolume     */
+GtkWidget *label_output;//用于错误输出
+GtkWidget *label_dest_folder;//目标子卷
+GtkWidget *label_subvol_name;//目的子卷名
+GtkWidget *text_dest_folder;//目标子卷的输入框
+GtkWidget *text_subvol_name;//目标子卷的
+GtkWidget *dest_folder_box;//用于目的文件夹的布局
+GtkWidget *subvol_name_box;//用于子卷名的布局
+//GtkWidget *subvol_output_box;
+GtkWidget *button_subvol_create;//子卷的创建按钮
+GtkWidget *frame_subvol_create;//子卷创建的面版
+GtkWidget *frame_main_box; //子卷创建面板的主盒子
+GtkWidget *align_frame;//排列组建
+GtkWidget *button_choose_folder;
+GtkWidget *dialog;
+GtkWidget *folder;
+gchar *foldername;
+gchar *folder_subvol_dest;//目的子卷路径
+char *needed_path[127];
+char list_item_insert[127][127];
+extern int subvol_list_num;
+extern int cmd_subvol_create(int argc, char **argv);
+char *args[2]={
+"-a","/"
+};
+char *args1[2] = {	"show","/"
+};
+char *args2[3] = {
+	"-r","-r","/"};
+char *args3[1]={
+	""
+};
+static gchar *title[11] = {
+	"Name :","uuid :","Parent_uid :","Creation time :","Object ID :","Generation(gen) :","Gen at creation :","Parent :","Top level :","Flags","Snapshot :"
+};
+extern struct sub_list_def list_def[127];
+void list_subvolume_details(GtkMenuItem *item,gpointer data){
+	g_print("list subvolume details\n");
+	
+	gtk_widget_destroy(view1);
+	view1 = gtk_viewport_new(NULL,NULL);
+	gtk_box_pack_start(GTK_BOX(contents_box),view1,FALSE,FALSE,0);
+	gtk_widget_show(view1);
+
+	table1 = gtk_table_new(8,6,FALSE);
+	gtk_container_add(GTK_CONTAINER(view1),table1);
+	gtk_widget_set_size_request(table1,550,400);
+	gtk_widget_show(table1);
+	int i;
+	int pos = 0;
+	for(i = 0;i < 12;i++){
+		list_new1[i] = gtk_label_new(title[pos]);
+		gtk_label_set_justify(GTK_LABEL(list_new1[i]),GTK_JUSTIFY_LEFT);
+		gtk_widget_set_size_request(list_new1[i],100,30);
+		list_subvol_info[i] = gtk_label_new("");
+		gtk_label_set_justify(GTK_LABEL(list_subvol_info[i]),GTK_JUSTIFY_LEFT);
+		gtk_widget_set_size_request(list_subvol_info[i],280,30);
+		gtk_table_attach(GTK_TABLE(table1),list_new1[i],0,2,i,i+1,GTK_FILL,GTK_FILL,10,2);
+		gtk_table_attach(GTK_TABLE(table1),list_subvol_info[i],2,5,i,i+1,GTK_EXPAND,GTK_EXPAND,10,2);
+		pos++;
+		gtk_widget_show(list_new1[i]);
+		gtk_widget_show(list_subvol_info[i]);
+	}
+	gtk_widget_show(contents_box);
+	g_print("need = %d\n",GPOINTER_TO_INT(data));
+	args1[1] = needed_path[GPOINTER_TO_INT(data)];
+	cmd_subvol_show(2,args1);
+}
+void list_subvolumes(char *argv[3]){
+	g_print("default subvolume");
+	subvol_list_num = 1;
+	gtk_widget_destroy(scsub);//删除左侧列表
+	gtk_widget_destroy(table1);
+	gtk_widget_destroy(view);//删除原先存在的视图区域
+	gtk_label_set_text(GTK_LABEL(label_title1),"subvolume list");	
+	gtk_label_set_text(GTK_LABEL(label_title2),"subvolume details");
+	
+	scsub = gtk_scrolled_window_new(NULL,NULL);
+	gtk_widget_set_size_request(scsub,400,400);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scsub),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
+	gtk_box_pack_start(GTK_BOX(itemlist_box),scsub,FALSE,FALSE,0);
+	gtk_widget_show(scsub);
+	gtk_widget_show(itemlist_box);	
+
+	view = gtk_viewport_new(NULL,NULL);
+	gtk_container_add(GTK_CONTAINER(scsub),view);
+	gtk_widget_show(view);
+
+	table = gtk_table_new(10,5,TRUE);
+	gtk_widget_set_size_request(table,400,400);
+	gtk_container_add(GTK_CONTAINER(view),table);
+	gtk_widget_set_size_request(table,400,400);
+	gtk_widget_show(table);
+	cmd_subvol_list(2,argv);
+	int i;
+	int j;
+	g_print("subvol num is %d \n",subvol_list_num);
+	for(i = 0; i < subvol_list_num/4+1 ;i++){
+		for(j = 0;j < 4;j++){
+			list_new[i][j] = gtk_label_new("");
+			gtk_table_attach(GTK_TABLE(table),list_new[i][j],j,j+1,i,i+1,GTK_FILL,GTK_FILL,0,5);
+			//gtk_label_set_justify(GTK_LABEL(list_new[i][j]),GTK_JUSTIFY_LEFT);
+			gtk_widget_show(list_new[i][j]);
+		}
+	}	
+	gtk_label_set_text(GTK_LABEL(list_new[0][0]),"id");	
+	gtk_label_set_text(GTK_LABEL(list_new[0][1]),"gen");	
+	gtk_label_set_text(GTK_LABEL(list_new[0][2]),"level");	
+	gtk_label_set_text(GTK_LABEL(list_new[0][3]),"path");	
+	for(i = 1; i < subvol_list_num/4+1;i++){
+			printf("//////////////////////%s,%s,%s,%s////////////////////\n",list_def[i-1].id,list_def[i-1].gen,list_def[i-1].level,list_def[i-1].path);
+			gtk_label_set_text(GTK_LABEL(list_new[i][0]),list_def[i-1].id);
+			gtk_label_set_text(GTK_LABEL(list_new[i][1]),list_def[i-1].gen);
+			gtk_label_set_text(GTK_LABEL(list_new[i][2]),list_def[i-1].level);
+			gtk_label_set_text(GTK_LABEL(list_new[i][3]),list_def[i-1].path);
+	}
+	for(i = 0; i < subvol_list_num/4+1;i++){
+	
+		button[i] = gtk_button_new_with_label("details");
+		gtk_table_attach(GTK_TABLE(table),button[i],4,5,i+1,i+2,GTK_EXPAND,GTK_EXPAND,0,5);
+		g_signal_connect(G_OBJECT(button[i]),"clicked",G_CALLBACK(list_subvolume_details),GINT_TO_POINTER(i));
+	}
+
+	for(i = 0; i < subvol_list_num/4;i++){
+		gtk_widget_show(button[i]);
+	}	
+}
+
+
+void handle_subvol_create(GtkWidget *widget,gpointer data){
+	//做简单检查
+	if(gtk_entry_get_text(GTK_ENTRY(text_dest_folder)) == NULL || gtk_entry_get_text(GTK_ENTRY(text_subvol_name)) == NULL){
+		gtk_label_set_text(label_output,"存在空字符串");
+		return ;
+	}
+	folder_subvol_dest = malloc(sizeof(char)*strlen(gtk_entry_get_text())+128);//128为名字的有效个数
+	strcpy(folder_subvol_dest,gtk_entry_get_text(text_dest_folder));
+	strcat(folder_subvol_dest,text_subvol_name);
+	args3[0] = folder_subvol_dest;
+	g_print("----------------subvol create %s-----------------------------\n",folder_subvol_dest);
+	cmd_subvol_create(1,args3);
+	//返回标记，用于判断是否正确
+}
+//选择目的文件夹
+void print_foldername(GtkWidget *folder){
+	foldername = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(folder));
+	gtk_widget_destroy(folder);
+	gtk_entry_set_text(GTK_ENTRY(text_dest_folder),foldername);
+	/*dialog = gtk_message_dialog_new(NULL,GTK_DIALOG_MODAL,GTK_MESSAGE_INFO,GTK_BUTTONS_OK,foldername);
+	gtk_dialog_run(GTK_DIALOG(dialog));
+	gtk_widget_destroy(dialog);*/
+}
+
+void select_dest_folder(GtkWidget *widget,gpointer data){
+	folder = gtk_file_chooser_dialog_new("Select Dest Path",NULL,GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER,GTK_STOCK_CANCEL,GTK_RESPONSE_CANCEL,GTK_STOCK_OK,GTK_RESPONSE_ACCEPT,NULL);
+	if(gtk_dialog_run(GTK_DIALOG(folder)) == GTK_RESPONSE_ACCEPT)
+		print_foldername(folder);
+	else
+		gtk_widget_destroy(folder);
+}
+void subvol_create(GtkMenuItem *item,gpointer data){
+	//删除左侧面板
+	gtk_widget_destroy(view1);
+	
+	frame_subvol_create  = gtk_frame_new(NULL);
+	//gtk_container_set_border_width(GTK_CONTAINER(frame_subvol_create),20);
+	gtk_container_add(GTK_CONTAINER(contents_box),frame_subvol_create);
+	gtk_widget_show(frame_subvol_create);
+	gtk_widget_show(contents_box);
+	
+	//align_frame = gtk_alignment_new(0.5,0.5,0,0);
+	//gtk_widget_show(align_frame);
+
+	frame_main_box = gtk_vbox_new(FALSE,20);
+	gtk_widget_set_size_request(frame_subvol_create,400,400);
+	gtk_container_add(GTK_CONTAINER(frame_subvol_create),frame_main_box);
+	gtk_widget_show(frame_main_box);
+
+	dest_folder_box = gtk_hbox_new(FALSE,20);
+	//gtk_container_add(GTK_CONTAINER(align_frame),dest_folder_box);
+	gtk_box_pack_start(GTK_BOX(frame_main_box),dest_folder_box,FALSE,TRUE,50);
+	gtk_widget_show(dest_folder_box);
+
+	label_dest_folder = gtk_label_new("dest_subvol");
+	gtk_box_pack_start(GTK_BOX(dest_folder_box),label_dest_folder,FALSE,TRUE,0);
+	gtk_widget_show(label_dest_folder);
+	text_dest_folder = gtk_entry_new();
+	gtk_widget_set_size_request(text_dest_folder,150,25);
+	gtk_box_pack_start(GTK_BOX(dest_folder_box),text_dest_folder,FALSE,TRUE,0);
+	gtk_widget_show(text_dest_folder);
+	
+	//目录选择
+	button_choose_folder = gtk_button_new_with_label("浏览");
+	gtk_widget_set_size_request(button_choose_folder,60,25);
+	gtk_box_pack_start(GTK_BOX(dest_folder_box),button_choose_folder,FALSE,TRUE,10);
+	gtk_widget_show(button_choose_folder);
+	g_signal_connect(G_OBJECT(button_choose_folder),"clicked",G_CALLBACK(select_dest_folder),NULL);
+
+	subvol_name_box = gtk_hbox_new(FALSE,0);
+	//gtk_container_add(GTK_CONTAINER(align_frame),subvol_name_box);
+	gtk_box_pack_start(GTK_BOX(frame_main_box),subvol_name_box,FALSE,TRUE,0);
+	gtk_widget_show(subvol_name_box);
+	
+	label_subvol_name = gtk_label_new("subvol_name");
+	gtk_box_pack_start(GTK_BOX(subvol_name_box),label_subvol_name,FALSE,TRUE,0);
+	gtk_widget_show(label_subvol_name);
+	
+	text_subvol_name = gtk_entry_new();
+	gtk_box_pack_start(GTK_BOX(subvol_name_box),text_subvol_name,FALSE,TRUE,0);
+	gtk_widget_set_size_request(text_subvol_name,222,25);
+	gtk_widget_show(text_subvol_name);
+	
+	//gtk_box_set_center_widget(subvol_name_box,label_subvol_name);
+	//gtk_box_set_center_widget(subvol_name_box,text_subvol_name);
+	//align_frame = gtk_alignment_new(0.5,0.7,0,0);
+	//subvol_output_box = gtk_vbox_new(FALSE,0);
+	//gtk_container_add(GTK_CONTAINER(align_frame),subvol_output_box);
+	//gtk_box_pack_start(GTK_BOX(frame_main_box),subvol_output_box,FALSE,TRUE,50);
+	//gtk_widget_show(subvol_output_box);
+	
+	button_subvol_create = gtk_button_new_with_label("create");
+	gtk_button_set_alignment(GTK_BUTTON(button_subvol_create),0.5,0);
+	gtk_widget_set_size_request(button_subvol_create,50,30);
+	gtk_box_pack_start(GTK_BOX(frame_main_box),button_subvol_create,FALSE,FALSE,0);
+	gtk_widget_show(button_subvol_create);
+	g_signal_connect(G_OBJECT(button_subvol_create),"clicked",G_CALLBACK(handle_subvol_create),NULL);
+
+	label_output = gtk_label_new("创建中");
+	gtk_box_pack_start(GTK_BOX(frame_main_box),label_output,FALSE,TRUE,0);
+	gtk_widget_show(label_output);	
+
+	//gtk_widget_set_center_widget(subvol_output_box,button_subvol_create);
+	//gtk_widget_set_center_widget(subvol_output_box,label_output);
+	
+}
+void scan_subvol_default(GtkMenuItem *window,gpointer data){
+	printf("scan subvol default\n");
+	list_subvolumes(args);
+}
+
+void scan_subvol_readonly(GtkMenuItem *window,gpointer data){
+	printf("scan subvol readonly\n");
+	list_subvolumes(args2);
+}
+void destroy(GtkWidget *window,gpointer data);
+//void scan_subvol(GtkMenuItem *window,gpointer data);
+/*static void debug(GtkWidget *window,gpointer window_main){
+	GtkWidget *dialog;
+	dialog=gtk_message_dialog_new(window_main,
+	GTK_DIALOG_DESTROY_WITH_PARENT,
+	GTK_MESSAGE_INFO,
+	GTK_BUTTONS_OK,
+	"Warning Information!");
+	gtk_window_set_title(GTK_WINDOW(dialog),"Warning!");
+	gtk_dialog_run(GTK_DIALOG(dialog));
+	gtk_widget_destroy(dialog);
+}*/
+
+GtkItemFactoryEntry menu_items[] = {
+	{ "/_Filesystem",         NULL,         NULL, 0, "<Branch>" },
+	{ "/Filesystem/_Create Btrfs",     "<control>N", NULL, 0, "<StockItem>",GTK_STOCK_NEW},
+	{ "/Filesystem/_Scan Filesystem",    "<control>S", scan_filesystem, 0,"<StockItem>",GTK_STOCK_FIND},
+	{ "/Filesystem/_Check Btrfs",    "<control>C", NULL,0,"<StockItem>",GTK_STOCK_OPEN},
+	{ "/Filesystem/_Version", NULL,         NULL, 0,"<StockItem>",GTK_STOCK_INFO},
+	{ "/Filesystem/sep1",     NULL,         NULL, 0, "<Separator>" },
+	{ "/Filesystem/_Exit",     "<control>Q", destroy, 0, "<StockItem>",GTK_STOCK_QUIT },
+	{ "/_Subvolume",      NULL,         NULL, 0, "<Branch>" },
+	{ "/Subvolume/_Scan Subvolume",  NULL,         NULL, 0, "<Branch>" },
+	{ "/Subvolume/Scan Subvolume/default",	NULL, scan_subvol_default ,	0,"<StockItem>",GTK_STOCK_FIND},	
+	{ "/Subvolume/Scan Subvolume/readonly",	NULL, scan_subvol_readonly ,0, "<StockItem>" ,GTK_STOCK_FIND},
+	{ "/Subvolume/Modifiled files",	NULL,	NULL,	0,	NULL},
+	{ "/Subvolume/Create",  NULL,         subvol_create, 0 , NULL },
+	{ "/Subvolume/Delete",  NULL,         NULL, 0, NULL },
+	{ "/_Snapshot",      NULL,         NULL, 0, "<Branch>" },
+	{ "/Snapshot/Scan Snapshot",      NULL,         NULL, 0, NULL },
+	{ "/Snapshot/Manage Snapshot",      NULL,         NULL, 0, NULL },
+	{ "/Snapshot/Create",      NULL,         NULL, 0, NULL },
+	{ "/Snapshot/Delete",      NULL,         NULL, 0, NULL },
+	{ "/_Help",         NULL,         NULL, 0, "<Branch>" },
+	{ "/_Help/About",   NULL,         NULL, 0, NULL },
+};
+
+gint nmenu_items = sizeof (menu_items) / sizeof (menu_items[0]);
+
+void destroy(GtkWidget *window,gpointer data){
+		gtk_main_quit();
+}
+
+
+int main(int argc, char *argv[]){	
+	gtk_init(&argc, &argv);//主窗口初始化
+	window_main = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	gtk_window_set_title(GTK_WINDOW(window_main),"btrfs_gui_utilities");
+	gtk_window_set_default_size(GTK_WINDOW(window_main),1000,500);
+	gtk_window_set_position(GTK_WINDOW(window_main),GTK_WIN_POS_CENTER);
+	gtk_container_set_border_width(GTK_CONTAINER(window_main),10);	
+	g_signal_connect(G_OBJECT(window_main),"destroy",G_CALLBACK(destroy),NULL);	
+		
+	box = gtk_vbox_new(FALSE,5);//创建纵向box容器
+	gtk_container_add(GTK_CONTAINER(window_main),box);
+	gtk_widget_show(box);
+	
+	accel_group = gtk_accel_group_new();//创建菜单栏
+	gtk_window_add_accel_group(GTK_WINDOW(window_main),accel_group);
+	item_factory = gtk_item_factory_new(GTK_TYPE_MENU_BAR,"<main>",accel_group);
+	gtk_item_factory_create_items(item_factory,nmenu_items,menu_items,NULL);
+	gtk_window_add_accel_group(GTK_WINDOW(window_main),accel_group);
+	menubar = gtk_item_factory_get_widget (item_factory,"<main>");
+	gtk_box_pack_start(GTK_BOX(box),menubar,FALSE,FALSE,0);
+
+	separator=gtk_hseparator_new();//创建分割线
+	gtk_box_pack_start(GTK_BOX(box),separator,FALSE,FALSE,0);
+
+	panel = gtk_hpaned_new();//创建分割面板
+	gtk_box_pack_start(GTK_BOX(box),panel,TRUE,TRUE,5);
+
+	itemlist_box=gtk_vbox_new(FALSE,0);//左侧分割面板添加纵向box容器,即列表容器
+	gtk_paned_add1(GTK_PANED(panel),itemlist_box);
+	
+	label_title1=gtk_label_new("Item List");//左侧box容器添加label
+	gtk_widget_set_size_request(label_title1,200,20);
+	gtk_box_pack_start(GTK_BOX(itemlist_box),label_title1,FALSE,FALSE,0);
+
+	view = gtk_viewport_new(NULL,NULL);//在左侧box中添加视图容器，并在视图容器中添加列表
+	gtk_widget_set_size_request(view,200,400);
+	gtk_box_pack_start(GTK_BOX(itemlist_box),view,FALSE,FALSE,0);//将视图容器添加至列表容器
+	list = gtk_list_new();//新建列表
+	gtk_list_set_selection_mode(GTK_LIST(list),GTK_SELECTION_SINGLE);
+	gtk_container_add(GTK_CONTAINER(view),list);//将列表添加至视图容器中
+	list_item=gtk_list_item_new_with_label("mount           disk           type");
+	gtk_container_add(GTK_CONTAINER(list),list_item);
+	list_item=gtk_list_item_new_with_label("/                 /dev/sda6        btrfs");
+	gtk_container_add(GTK_CONTAINER(list),list_item);
+	list_item=gtk_list_item_new_with_label("/home         /dev/sda6        btrfs");
+	gtk_container_add(GTK_CONTAINER(list),list_item);
+	list_item=gtk_list_item_new_with_label("/                 /dev/sda1        btrfs");
+	gtk_container_add(GTK_CONTAINER(list),list_item);
+	//gtk_signal_connect(GTK_OBJECT(list),"select-child",GTK_SIGNAL_FUNC(test),NULL);//为list item添加选中时出发的事件
+	//gtk_signal_connect(GTK_OBJECT(list_item),"deselect",G_CALLBACK(test),NULL);
+
+	contents_box=gtk_vbox_new(FALSE,0);//右侧分割面板添加纵向box容器
+	gtk_paned_add2(GTK_PANED(panel),contents_box);
+	
+	
+	label_title2 = gtk_label_new("contents");//右侧box容器添加label容器
+	gtk_widget_set_size_request(label_title2,200,20);
+	gtk_box_pack_start(GTK_BOX(contents_box),label_title2,FALSE,FALSE,0);
+	gtk_widget_show_all(window_main);
+	
+	
+	gtk_main();
+	return 0;
+}

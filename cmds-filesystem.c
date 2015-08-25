@@ -298,6 +298,7 @@ void print_one_uuid(struct btrfs_fs_devices *fs_devices)
 	if (add_seen_fsid(fs_devices->fsid))
 		return;
 
+	printf("uuid-------------------------------------------------------1\n");
 	uuid_unparse(fs_devices->fsid, uuidbuf);
 	device = list_entry(fs_devices->devices.next, struct btrfs_device,
 			    dev_list);
@@ -307,9 +308,10 @@ void print_one_uuid(struct btrfs_fs_devices *fs_devices)
 	}
 	else
 	{
+		printf("-------------------------------------------------------1\n");
 		printf("Label: none ");
 	}
-
+	printf("-------------------------------------------------------1\n");
 
 	total = device->total_devs;
 	printf(" uuid: %s\n\tTotal devices %llu FS bytes used %s\n", uuidbuf,
@@ -331,6 +333,7 @@ void print_one_uuid(struct btrfs_fs_devices *fs_devices)
 		printf("\t*** Some devices missing\n");
 	}
 	printf("\n");
+	printf("--------------------------------------------------------2\n");
 }
 
 /* adds up all the used spaces as reported by the space info ioctl
@@ -362,8 +365,9 @@ static int print_one_fs(struct btrfs_ioctl_fs_info_args *fs_info,
 
 	uuid_unparse(fs_info->fsid, uuidbuf);
 	printf("Label: %s  uuid: %s\n",strlen(label) ? label : "none", uuidbuf);
-	
+	printf("--------------where has been modified----------------");
 	char *string_buffer=NULL;
+	char *string="zp";
 	string_buffer=(char *)malloc(\
 	(strlen("Label: ")\
 	+(strlen(label) ? strlen(label) : strlen("none"))\
@@ -373,7 +377,7 @@ static int print_one_fs(struct btrfs_ioctl_fs_info_args *fs_info,
 	gtk_text_buffer_get_end_iter(buffer,&end);
 	gtk_text_buffer_insert(buffer,&end,string_buffer,-1);
 	free(string_buffer);
-
+	printf("-----------------ending--------------------------------");
 	printf("\tTotal devices %llu FS bytes used %s\n",
 				fs_info->num_devices,
 			pretty_size(calc_used_bytes(space_info)));
@@ -557,6 +561,7 @@ int cmd_show(int argc, char **argv)
 		}
 	}
 
+	printf("--------------------------------------------------------+1\n");
 	if (where == BTRFS_SCAN_LBLKID) {
 		if (check_argc_max(argc, optind + 1))
 			usage(cmd_show_usage);
@@ -578,25 +583,34 @@ int cmd_show(int argc, char **argv)
 		}
 	}
 
+	printf("-----------------------------------------------------------------------------1\n");
 	if (where == BTRFS_SCAN_DEV)
 		goto devs_only;
 
+	printf("-------------------------------------------------------++1\n");
 	/* show mounted btrfs */
 	btrfs_scan_kernel(search);
 
+	printf("-------------------------------------------------------++=1\n");
 	/* shows mounted only */
 	if (where == BTRFS_SCAN_MOUNTED)
 		goto out;
+	printf("-------------------------------------------------------+++=1\n");
 
 devs_only:
+	printf("-------------------------------------------------------++++++++++1\n");
 	ret = scan_for_btrfs(where, !BTRFS_UPDATE_KERNEL);
 
+	printf("-------------------------------------------------------0\n");
 	if (ret) {
 		fprintf(stderr, "ERROR: %d while scanning\n", ret);
 		return 1;
 	}
 	
+	printf("-------------------------------------------------------1\n");
 	all_uuids = btrfs_scanned_uuids();
+
+	printf("-------------------------------------------------------2\n");
 	list_for_each(cur_uuid, all_uuids) {
 		fs_devices = list_entry(cur_uuid, struct btrfs_fs_devices,
 					list);

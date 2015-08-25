@@ -1109,7 +1109,9 @@ again:
 			ret = -EFAULT;
 			goto fail;
 		}
+		printf("--------------------------------------\n");
 		snprintf(fullpath, PATH_MAX, "%s/%s", dirname, dirent->d_name);
+		printf("--------------------------------------\n");
 		ret = lstat(fullpath, &st);
 		if (ret < 0) {
 			fprintf(stderr, "failed to stat %s\n", fullpath);

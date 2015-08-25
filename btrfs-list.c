@@ -33,13 +33,31 @@
 #include "utils.h"
 #include <uuid/uuid.h>
 #include "btrfs-list.h"
-
+#include "filesystem.h"
+#include "subvolume.h"
+#include "snapshot-scan.h"
 #define BTRFS_LIST_NFILTERS_INCREASE	(2 * BTRFS_LIST_FILTER_MAX)
 #define BTRFS_LIST_NCOMPS_INCREASE	(2 * BTRFS_LIST_COMP_MAX)
+extern int file_change_num;
+extern char file_change_info[127][256];
+extern char *needed_path[127];
+extern int subvol_show_snap_num;
+int subvol_list_num = 1;
+ //struct subvol_list_def list_def[127];
 
+char snapshot_path[127][200];
+extern int snapshot_num;
+/*该索引表示当前id等数据项所在的位置*/
+int subvol_index = 0; 
+/*子卷中的数据项id,gen,level*/
+char subvol_strid[127][6];
+char subvol_strgen[127][30];
+char subvol_strlevel[127][5];
+char subvol_strpath[127][200];
 /* we store all the roots we find in an rbtree so that we can
  * search for them later.
  */
+
 struct root_lookup {
 	struct rb_root root;
 };
@@ -1327,14 +1345,34 @@ static int __list_subvol_fill_paths(int fd, struct root_lookup *root_lookup)
 	return 0;
 }
 
+static void full_path_to_needed(char path[],int i){
+
+	char prefix_path[127];
+	char main_path[127];
+	if('@' == path[0] && '/' == path[1])	
+		strcpy(main_path,path+2);
+	else{
+		if('@' == path[0]){
+			strcpy(main_path,path+1);
+		}
+		else{
+			strcpy(main_path,path);
+		}
+	}
+	strcpy(prefix_path,"/");
+	strcat(prefix_path,main_path);
+	needed_path[i] = malloc(sizeof(char) * strlen(prefix_path)+1);
+	strcpy(needed_path[i],prefix_path); 
+	printf("now path id is %s\t\t\n",needed_path[i]);
+
+}
+
 static void print_subvolume_column(struct root_info *subv,
 				   enum btrfs_list_column_enum column)
 {
 	char tstr[256];
 	char uuidparse[37];
-
 	BUG_ON(column >= BTRFS_LIST_ALL || column < 0);
-
 	switch (column) {
 	case BTRFS_LIST_OBJECTID:
 		printf("%llu", subv->root_id);
@@ -1354,7 +1392,6 @@ static void print_subvolume_column(struct root_info *subv,
 	case BTRFS_LIST_OTIME:
 		if (subv->otime) {
 			struct tm tm;
-
 			localtime_r(&subv->otime, &tm);
 			strftime(tstr, 256, "%Y-%m-%d %X", &tm);
 		} else
@@ -1377,11 +1414,12 @@ static void print_subvolume_column(struct root_info *subv,
 		break;
 	case BTRFS_LIST_PATH:
 		BUG_ON(!subv->full_path);
-		printf("%s", subv->full_path);
 		break;
 	default:
 		break;
 	}
+	
+
 }
 
 static void print_single_volume_info_raw(struct root_info *subv, char *raw_prefix)
@@ -1394,7 +1432,7 @@ static void print_single_volume_info_raw(struct root_info *subv, char *raw_prefi
 
 		if (raw_prefix)
 			printf("%s",raw_prefix);
-
+		printf("------------------------i=%d\n",i);
 		print_subvolume_column(subv, i);
 	}
 	printf("\n");
@@ -1422,14 +1460,29 @@ static void print_single_volume_info_table(struct root_info *subv)
 static void print_single_volume_info_default(struct root_info *subv)
 {
 	int i;
-
+	/*长度需要进一步确认*/
+	char root_id_str[6];
+	char gen_str[30];
+	char top_id_str[5];
+	printf("--------------------------print single volume -------------\n");
 	for (i = 0; i < BTRFS_LIST_ALL; i++) {
 		if (!btrfs_list_columns[i].need_print)
 			continue;
 
 		printf("%s ", btrfs_list_columns[i].name);
+		printf("now column is %d \n",i);
 		print_subvolume_column(subv, i);
-
+		/*
+		 *获取子卷数据结构中的四项 id gen level path 
+		 */
+			
+		sprintf(root_id_str,"%llu",subv->root_id);
+		sprintf(gen_str,"%llu",subv->gen);
+		sprintf(top_id_str,"%llu",subv->top_id);
+		if(i == 8){
+			gtk_list_store_append((GtkListStore *)subvol_info_list_store,&subvol_iter);
+			gtk_list_store_set(( GtkListStore *)subvol_info_list_store,&subvol_iter,0,root_id_str,1,gen_str,2,top_id_str,3,subv->full_path,4,"snapshot",-1);
+		}
 		if (i != BTRFS_LIST_PATH)
 			printf(" ");
 	}
@@ -1475,11 +1528,14 @@ static void print_all_volume_info(struct root_lookup *sorted_tree,
 		print_all_volume_info_tab_head();
 
 	n = rb_first(&sorted_tree->root);
+	//subvol_show_snap_num = 0;
 	while (n) {
+		printf("next snapshot path");
 		entry = rb_entry(n, struct root_info, sort_node);
 		switch (layout) {
 		case BTRFS_LIST_LAYOUT_DEFAULT:
 			print_single_volume_info_default(entry);
+			subvol_index++;
 			break;
 		case BTRFS_LIST_LAYOUT_TABLE:
 			print_single_volume_info_table(entry);
@@ -1491,6 +1547,7 @@ static void print_all_volume_info(struct root_lookup *sorted_tree,
 		n = rb_next(n);
 	}
 }
+
 
 static int btrfs_list_subvols(int fd, struct root_lookup *root_lookup)
 {
@@ -1517,7 +1574,8 @@ int btrfs_list_subvols_print(int fd, struct btrfs_list_filter_set *filter_set,
 {
 	struct root_lookup root_lookup;
 	struct root_lookup root_sort;
-	int ret = 0;
+	int ret = 0;	
+	printf("-----------------btrfs print------------------------");
 	u64 top_id = 0;
 
 	if (full_path)
@@ -1531,6 +1589,7 @@ int btrfs_list_subvols_print(int fd, struct btrfs_list_filter_set *filter_set,
 	__filter_and_sort_subvol(&root_lookup, &root_sort, filter_set,
 				 comp_set, top_id);
 
+	//print root sort
 	print_all_volume_info(&root_sort, layout, raw_prefix);
 	__free_all_subvolumn(&root_lookup);
 
@@ -1583,7 +1642,8 @@ int btrfs_get_subvol(int fd, struct root_info *the_ri)
 	return ret;
 }
 
-static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
+//static 
+	int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 			    struct btrfs_file_extent_item *item,
 			    u64 found_gen, u64 *cache_dirid,
 			    char **cache_dir_name, u64 *cache_ino,
@@ -1593,6 +1653,8 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 	u64 disk_start = 0;
 	u64 disk_offset = 0;
 	u8 type;
+	//用于输出变更文件信息
+	
 	int compressed = 0;
 	int flags = 0;
 	char *name = NULL;
@@ -1625,6 +1687,7 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 		disk_offset = 0;
 		len = btrfs_stack_file_extent_ram_bytes(item);
 	} else {
+		printf("------------unhandled-----------------\n");
 		printf("unhandled extent type %d for inode %llu "
 		       "file offset %llu gen %llu\n",
 			type,
@@ -1634,6 +1697,8 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 
 		return -EIO;
 	}
+
+	printf("---------------inode------------------------\n");
 	printf("inode %llu file offset %llu len %llu disk start %llu "
 	       "offset %llu gen %llu flags ",
 	       (unsigned long long)sh->objectid,
@@ -1659,6 +1724,11 @@ static int print_one_extent(int fd, struct btrfs_ioctl_search_header *sh,
 		printf("NONE");
 
 	printf(" %s\n", name);
+	printf("set--------------label\n");
+	//file_change_info = malloc(sizeof(char)*256); //长度有待调整
+	sprintf(file_change_info[file_change_num],"<span font_desc='10'>changed location %d ; inode: %llu ;  gen: %llu   ;filename: %s</span>",file_change_num,sh->objectid,found_gen,name);
+	//gtk_label_set_markup(GTK_LABEL(label_file_change_info[file_change_num]),file_change_info);//显示最近修改文件的标签
+	file_change_num++;
 	return 0;
 }
 
@@ -1698,6 +1768,9 @@ int btrfs_list_find_updated_files(int fd, u64 root_id, u64 oldest_gen)
 	sk->nr_items = 4096;
 
 	max_found = find_root_gen(fd);
+	
+	/*重置file_change_num的数值*/
+	file_change_num =0;
 	while(1) {
 		ret = ioctl(fd, BTRFS_IOC_TREE_SEARCH, &args);
 		e = errno;
